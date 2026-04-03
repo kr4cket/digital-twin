@@ -15,10 +15,8 @@
 # limitations under the License.
 #
 
-# Ignore everything
+# Игнорируем всё, кроме нужных конфигов
 *
-# DON'T ignore the .gitignore
 !.gitignore
 !superset_config.py
-!superset_config_docker_light.py
-!superset_config_local.example
+!superset_config_docker.py

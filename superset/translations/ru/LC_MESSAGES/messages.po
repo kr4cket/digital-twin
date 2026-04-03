@@ -9511,7 +9511,7 @@ msgid "Position of row level subtotal"
 msgstr "Расположение подытога на уровне строки"
 
 msgid "Powered by Apache Superset"
-msgstr "На базе Apache Superset"
+msgstr "Цифровой двойник нефти"
 
 msgid "Pre-filter"
 msgstr "Предварительная фильтрация"
