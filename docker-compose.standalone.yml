@@ -1,0 +1,163 @@
+# ---------------------------------------------------------------
+# Docker Compose (standalone) — «Цифровой двойник нефти»
+#
+# Автономный compose-файл: не требует клонирования репозитория.
+# Docker сам скачает исходники из GitHub и соберёт образ.
+#
+# Использование:
+#   # Скачать этот файл (или скопировать)
+#   curl -O https://raw.githubusercontent.com/kr4cket/digital-twin/digital-twin/docker-compose.standalone.yml
+#
+#   # Собрать и запустить
+#   docker compose -f docker-compose.standalone.yml up -d --build
+#
+#   # Открыть: http://localhost:8088  (admin / admin)
+#
+#   # Остановить
+#   docker compose -f docker-compose.standalone.yml down
+#
+#   # Пересобрать с нуля
+#   docker compose -f docker-compose.standalone.yml build --no-cache
+#   docker compose -f docker-compose.standalone.yml up -d
+# ---------------------------------------------------------------
+
+x-superset-build: &superset-build
+  context: https://github.com/kr4cket/digital-twin.git#digital-twin
+  target: dev
+  args:
+    BUILD_TRANSLATIONS: "true"
+
+x-superset-env: &superset-env
+  COMPOSE_PROJECT_NAME: superset
+  PYTHONUNBUFFERED: "1"
+  DEV_MODE: "true"
+  # Database
+  DATABASE_DB: superset
+  DATABASE_HOST: db
+  DATABASE_PORT: "5432"
+  DATABASE_USER: superset
+  DATABASE_PASSWORD: superset
+  DATABASE_DIALECT: postgresql
+  # Redis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  # Superset
+  PYTHONPATH: /app/pythonpath:/app/docker/pythonpath_dev
+  FLASK_DEBUG: "true"
+  SUPERSET_LOG_LEVEL: info
+  SUPERSET_ENV: development
+  SUPERSET_LOAD_EXAMPLES: "no"
+  SUPERSET_PORT: "8088"
+  SUPERSET_SECRET_KEY: TEST_NON_DEV_SECRET
+  SUPERSET_APP_ROOT: /
+  # Misc
+  CYPRESS_CONFIG: "false"
+  ENABLE_PLAYWRIGHT: "false"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+  BUILD_SUPERSET_FRONTEND_IN_DOCKER: "true"
+  MAPBOX_API_KEY: ""
+
+services:
+  redis:
+    image: redis:7
+    container_name: superset_cache
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+
+  db:
+    image: postgres:17
+    container_name: superset_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset
+    volumes:
+      - db_home:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  superset:
+    build:
+      <<: *superset-build
+    container_name: superset_app
+    command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
+    user: "root"
+    restart: unless-stopped
+    ports:
+      - 8088:8088
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *superset-env
+    volumes:
+      - superset_home:/app/superset_home
+
+  superset-init:
+    build:
+      <<: *superset-build
+    container_name: superset_init
+    command: ["/app/docker/docker-init.sh"]
+    user: "root"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *superset-env
+    volumes:
+      - superset_home:/app/superset_home
+    healthcheck:
+      disable: true
+
+  superset-worker:
+    build:
+      <<: *superset-build
+    container_name: superset_worker
+    command: ["/app/docker/docker-bootstrap.sh", "worker"]
+    user: "root"
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *superset-env
+    volumes:
+      - superset_home:/app/superset_home
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME",
+        ]
+
+  superset-worker-beat:
+    build:
+      <<: *superset-build
+    container_name: superset_worker_beat
+    command: ["/app/docker/docker-bootstrap.sh", "beat"]
+    user: "root"
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *superset-env
+    volumes:
+      - superset_home:/app/superset_home
+    healthcheck:
+      disable: true
+
+volumes:
+  superset_home:
+    external: false
+  db_home:
+    external: false
+  redis:
+    external: false

@@ -112,6 +112,8 @@ RUN useradd --user-group -d ${SUPERSET_HOME} -m --no-log-init --shell /bin/bash 
 
 # Some bash scripts needed throughout the layers
 COPY --chmod=755 docker/*.sh /app/docker/
+# Copy Python config for standalone (non-volume-mount) deployments
+COPY docker/pythonpath_dev /app/docker/pythonpath_dev
 
 RUN pip install --no-cache-dir --upgrade uv
 
